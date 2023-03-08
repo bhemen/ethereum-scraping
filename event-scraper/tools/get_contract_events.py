@@ -69,7 +69,7 @@ def getContractEvents(api_url,min_start_block,contract_address,outfile,scanned_e
 	# Restore/create our persistent state
 	state.restore()
 
-	target_events = [getattr(contract.events,evt) for evt in scanned_events]
+	target_events = [getattr(contract.events,evt) for evt in event_names]
 
 	# chain_id: int, web3: Web3, abi: dict, state: EventScannerState, events: List, filters: {}, max_chunk_scan_size: int=10000
 	scanner = EventScanner(
