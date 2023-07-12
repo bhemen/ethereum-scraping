@@ -32,3 +32,7 @@ The ERC20 standard governs how most "fungible" tokens behave.  Read the document
 The ERC721 standard governs how most "non-fungible" tokens behave.  Read the documentation for [ERC721 tokens](https://ethereum.org/en/developers/docs/standards/tokens/erc-721/)
 
 The ['Tokens' Tutorial on EatTheBlocks](https://www.youtube.com/playlist?list=PLbbtODcOYIoGOvl0KH57_nfvEKOYV6qdT) is another good place to learn about interacting with Ethereum Tokens
+
+## eventscanner
+
+The web3 library provides a tool "[eventscanner](https://web3py.readthedocs.io/en/stable/examples.html#advanced-token-fetch)" that can scan the blockchain for events from a specific contract.
