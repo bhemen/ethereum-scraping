@@ -36,3 +36,11 @@ The ['Tokens' Tutorial on EatTheBlocks](https://www.youtube.com/playlist?list=PL
 ## eventscanner
 
 The web3 library provides a tool "[eventscanner](https://web3py.readthedocs.io/en/stable/examples.html#advanced-token-fetch)" that can scan the blockchain for events from a specific contract.
+The script [get_contract_events.py](eventscanner/get_contract_events.py) provides a modified version of the web3 event scanner that can scan the Ethereum blockchain for all events emitted by a specific contract
+This performs alright for contracts that don't emit too many events (e.g. Compound governance) but performs badly for contracts that emit a lot of events (e.g. all USDC transfers).
+
+## event-scraper
+
+The script [get_contract_logs.py](event-scraper/get_contract_logs.py) allows you to scrape the Ethereum blockchain for events emitted by a specific contract and write the results to a csv.
+The functionality is very similar to eventscanner, but get_contract_logs.py is much simpler
+Ethereum nodes are very finicky, and the different scripts 
