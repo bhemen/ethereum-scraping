@@ -1,5 +1,5 @@
 from web3 import Web3
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import pandas as pd
 from utils import get_cached_abi
 from datetime import datetime
@@ -17,7 +17,7 @@ def restoreState(outfile):
 
 	start_block = int(df.blockNumber.max())
 
-	df = df[[df.blockNumber != start_block]] #It's possible that scraping failed in the middle of the last block, so we delete those rows
+	df = df[df.blockNumber != start_block] #It's possible that scraping failed in the middle of the last block, so we delete those rows
 	df.to_csv(outfile,index=False)
 
 	print( f"Restoring from {outfile}" )
