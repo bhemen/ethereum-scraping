@@ -16,39 +16,55 @@ def restoreState(outfile):
 		return [], 0
 
 	start_block = int(df.blockNumber.max())
+
+	df = df[[df.blockNumber != start_block]] #It's possible that scraping failed in the middle of the last block, so we delete those rows
+	df.to_csv(outfile,index=False)
+
 	print( f"Restoring from {outfile}" )
 	print( f"Starting at {start_block}" )
 	return df.columns, start_block
 
 def getContractEvents( contract_address, target_events, outfile, start_block=1,end_block=None ):
+	"""
+		contract_address - the address of the contract to scrape
+		target_events - list of names of events you want to scrape (if target_events = 'all' then, we scrape all events from the contract)
+		outfile - where to write the .csv of events
+		start_block - the block number to start scanning (you should often set this to be the deploy block of the contract)
+		end_block - scan until this block.  If end_block == None, then scan until the end of the chain
+	"""
 	url="http://127.0.0.1:8545" #This should really only be run against a local node
 	w3 = Web3(Web3.HTTPProvider(url))
 
 	error_file = outfile.split(".")[0] + "_errors.csv"
 
 	contract_address = Web3.to_checksum_address(contract_address)
-	latest_block = w3.eth.get_block_number()
+	latest_block = w3.eth.get_block_number() #Last block your node knows about
 
-	if end_block == None:
+	if end_block == None: #If no end_block was provided to the function, scan to the end of the chain
 		end_block = latest_block
 	
-	batch_size = base_batch_size = 100
+	batch_size = base_batch_size = 100 #How many blocks to scan at once
 
-	max_retries = 5
+	max_retries = 5 #Maximum number of times you'll retry a query if the node returns an error
 	num_retries = 0
-	abi = get_cached_abi(contract_address)
+	abi = get_cached_abi(contract_address) #Calls the utils library to get the ABI from the local cache.  If the ABI is not in the local cache it queries etherscan
 
-	contract = w3.eth.contract(address=contract_address,abi=abi)
+	contract = w3.eth.contract(address=contract_address,abi=abi) #Make a contract object
 
+	#Create a mapping from event "signatures" to event names
+	#The signature of an event is the keccak hash of the name of the event (and its arguments)
+	#We can calculate the signatures from the ABI
+	#The "signature" for the Transfer event is keccak("Transfer(address,address,uint256)")
+	#Which is 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
 	full_event_signatures = {}
 	event_signatures = {}
 	for evt in [obj for obj in abi if obj['type'] == 'event']:
 		name = evt['name']
 		types = [inpt['type'] for inpt in evt['inputs']]
 		full = '{}({})'.format(name,','.join(types))
-		sig = Web3.keccak(text=full).hex()
-		full_event_signatures[sig] = full
-		event_signatures[sig] = name
+		sig = Web3.keccak(text=full).hex() #Signature is keccak applied to EventName(event_inputs)
+		full_event_signatures[sig] = full #This map has the "full" name (with inputs included).  For example full_event_signatures["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"] = "Transfer(address,address,uint256)"
+		event_signatures[sig] = name #This map has only the name.  For example event_signatures["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"] = "Transfer"
 
 	if target_events == 'all' or target_events == []:
 		target_event_signatures = event_signatures
@@ -67,21 +83,22 @@ def getContractEvents( contract_address, target_events, outfile, start_block=1,e
 	for evt in [obj for obj in abi if obj['type'] == 'event' and obj['name'] in target_event_signatures.values()]:
 		colnames = colnames.union( [inpt['name'] for inpt in evt['inputs']] )
 
+	#These are extra columns we record for every event
 	extra_cols = ['event','address','blockHash','blockNumber','timestamp','transactionHash','msg.sender','data']
-	colnames = sorted( list( colnames.union(extra_cols) ) )	
+	colnames = sorted( list( colnames.union(extra_cols) ) )	#Sort the columns to make sure they all line when you restore from a partial scraping
 	print( f'colnames = {colnames}' )
 
 	old_cols, last_scanned_block = restoreState(outfile)
 
 	if last_scanned_block > 0: #We have a state to restore
-		if len(old_cols) > 0:
+		if len(old_cols) > 0: #Check that the old state is consistent with the new state (Check that the old set of columns is the same as the new set of columns)
 			if set(old_cols) != set(colnames):
 				print( f"Error: restored state has a different set of columns" )
 				if len( set(colnames).difference(old_cols) ) > 0:
 					print( f"Error: events have columns not in existing data set {list(set(colnames).difference(old_cols))}" )
 				if len( set(old_cols).difference(colnames) ) > 0:
 					print( f"Error: old_columns not in existing data set {list(set(old_cols).difference(colnames))}" )
-				sys.exit(1)
+				sys.exit(1) #If the old set of columns doesn't match the new set, then we abort
 
 		start_block = max( last_scanned_block, start_block ) #Pick up where we left off
 	else: #Starting from scratch, so we write the column names
@@ -92,12 +109,12 @@ def getContractEvents( contract_address, target_events, outfile, start_block=1,e
 	print( f"Scanning for events {list(target_event_signatures.values())}" )
 	print( f"Writing data to {outfile}" )
 
-	df = pd.DataFrame()
-
 	batch_start_block = start_block
 	formatted_time = ""
 	events_count = 0
 
+	#Loop over all blocks in the chain
+	#We use a while loop instead of a for loop so that we can loop over variable sized batches of blocks
 	with tqdm(total=end_block-start_block) as bar:
 		while True:
 			batch_end_block = min( batch_start_block + batch_size, latest_block )
@@ -106,11 +123,11 @@ def getContractEvents( contract_address, target_events, outfile, start_block=1,e
 			try:
 				events = [list(target_event_signatures.keys())] #Note the double-list: https://ethereum.stackexchange.com/questions/90526/web3-py-topics
 				#lgs = w3.eth.get_logs( { 'fromBlock': start_block, 'toBlock': end_block, 'address': contract_address, 'topics': events } )
-				lgs = w3.eth.get_logs( { 'fromBlock': batch_start_block, 'toBlock': batch_end_block, 'address': contract_address } )
+				lgs = w3.eth.get_logs( { 'fromBlock': batch_start_block, 'toBlock': batch_end_block, 'address': contract_address } ) #This is where we call the chain
 			except Exception as e:
 				print( "Error" )
 				print( e )
-				batch_size = max( batch_size // 2, 1 )
+				batch_size = max( batch_size // 2, 1 ) #If we get an error, we halve the batch size
 				num_retries += 1
 				if num_retries == max_retries: 
 					num_retries = 0
@@ -120,7 +137,7 @@ def getContractEvents( contract_address, target_events, outfile, start_block=1,e
 				continue
 
 			if len(lgs) > 0:
-				new_rows = processLogs(w3,contract,target_event_signatures,lgs)	
+				new_rows = processLogs(w3,contract,target_event_signatures,lgs)	#Returns a list of dictionaries
 				with open( outfile, 'a' ) as f:
 					w = csv.DictWriter( f, fieldnames=colnames )
 					w.writerows( new_rows )
@@ -129,17 +146,22 @@ def getContractEvents( contract_address, target_events, outfile, start_block=1,e
 					formatted_time = new_rows[-1]['timestamp']
 				events_count = len(new_rows)
 
-
 			bar.set_description(f"Current block: {batch_start_block} ({formatted_time}) blocks in a scan batch: {batch_size}, events processed in a batch {events_count}")
 			bar.update(batch_size)
 
 			batch_start_block = batch_end_block + 1
-			batch_size = base_batch_size
+			batch_size = min( batch_size*2, base_batch_size )
 			num_retries = 0
 
-	df.to_csv(outfile,index=False)
-
 def processLogs(w3,contract,event_signatures,lgs):
+	"""
+		w3 - w3 instance (needed to get the block timestamp, and msg.sender which are not included in the logs)
+		contract - contract object
+		event_signatures - dictionary of signature -> name mappings for the events we care about
+		lgs - list of contract logs returned by get_logs
+
+		Returns a list of dicts
+	"""
 	rows = []
 	for lg in lgs:
 		row = {'address': lg.address, 'blockHash': lg.blockHash.hex(), 'blockNumber': lg.blockNumber, 'transactionHash': lg.transactionHash.hex(), 'data': lg.data }
@@ -152,9 +174,9 @@ def processLogs(w3,contract,event_signatures,lgs):
 			pass
 			
 
-		if lg.topics[0].hex() in event_signatures.keys():
-			event = event_signatures[lg.topics[0].hex()]
-			event_obj = getattr( contract.events, event )
+		if lg.topics[0].hex() in event_signatures.keys(): #Only grab the events in our list
+			event = event_signatures[lg.topics[0].hex()] #Look up event name in the dictionary we made
+			event_obj = getattr( contract.events, event ) #Get the function needed to process the log from the contract object
 			logs = event_obj().process_log(lg)
 			if 'args' in logs.keys():
 				row.update( logs['args'] )
@@ -167,7 +189,7 @@ def processLogs(w3,contract,event_signatures,lgs):
 
 		try:
 			tx = w3.eth.get_transaction(lg.transactionHash)
-			row['msg.sender'] = tx['from']
+			row['msg.sender'] = tx['from'] #What was the address that called the method that generated this event
 		except Exception as e:
 			row['msg.sender'] = None
 	
