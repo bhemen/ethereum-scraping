@@ -6,7 +6,25 @@ from datetime import datetime
 import sys
 import csv
 
-def getContractEvents( contract_address, target_events, outfile, api_url="http://127.0.0.1:8545",start_block=1,end_block=None ):
+def restoreState(outfile):
+	try:
+		df = pd.read_csv(outfile)
+	except Exception as e:
+		return [], 0
+
+	if len(df) == 0:
+		return [], 0
+
+	start_block = int(df.blockNumber.max())
+
+	df = df[df.blockNumber != start_block] #It's possible that scraping failed in the middle of the last block, so we delete those rows
+	df.to_csv(outfile,index=False)
+
+	print( f"Restoring from {outfile}" )
+	print( f"Starting at {start_block}" )
+	return df.columns, start_block
+
+def getContractEvents( contract_address, target_events, outfile, api_url="127.0.0.1:8545",start_block=1,end_block=None ):
 	"""
 		contract_address - the address of the contract to scrape
 		target_events - list of names of events you want to scrape (if target_events = 'all' then, we scrape all events from the contract)
@@ -70,7 +88,7 @@ def getContractEvents( contract_address, target_events, outfile, api_url="http:/
 	colnames = sorted( list( colnames.union(extra_cols) ) )	#Sort the columns to make sure they all line when you restore from a partial scraping
 	print( f'colnames = {colnames}' )
 
-	old_cols, last_scanned_block = _restoreState(outfile)
+	old_cols, last_scanned_block = restoreState(outfile)
 
 	if last_scanned_block > 0: #We have a state to restore
 		if len(old_cols) > 0: #Check that the old state is consistent with the new state (Check that the old set of columns is the same as the new set of columns)
@@ -119,13 +137,13 @@ def getContractEvents( contract_address, target_events, outfile, api_url="http:/
 				continue
 
 			if len(lgs) > 0:
-				new_rows = _processLogs(w3,contract,target_event_signatures,lgs)	#Returns a list of dictionaries
+				new_rows = processLogs(w3,contract,target_event_signatures,lgs)	#Returns a list of dictionaries
 				with open( outfile, 'a' ) as f:
 					w = csv.DictWriter( f, fieldnames=colnames )
 					w.writerows( new_rows )
 				
 				if 'timestamp' in new_rows[-1].keys():
-					formatted_time = new_rows[-1]['timestamp']
+					formatted_time = datetime.fromtimestamp(new_rows[-1]['timestamp']).strftime("%Y-%m-%d")
 				events_count = len(new_rows)
 
 			bar.set_description(f"Current block: {batch_start_block} ({formatted_time}) blocks in a scan batch: {batch_size}, events processed in a batch {events_count}")
@@ -135,7 +153,7 @@ def getContractEvents( contract_address, target_events, outfile, api_url="http:/
 			batch_size = min( batch_size*2, base_batch_size )
 			num_retries = 0
 
-def _processLogs(w3,contract,event_signatures,lgs):
+def processLogs(w3,contract,event_signatures,lgs):
 	"""
 		w3 - w3 instance (needed to get the block timestamp, and msg.sender which are not included in the logs)
 		contract - contract object
@@ -178,25 +196,6 @@ def _processLogs(w3,contract,event_signatures,lgs):
 		rows.append(row)
 
 	return rows
-
-def _restoreState(outfile):
-	try:
-		df = pd.read_csv(outfile)
-	except Exception as e:
-		return [], 0
-
-	if len(df) == 0:
-		return [], 0
-
-	start_block = int(df.blockNumber.max())
-
-	df = df[df.blockNumber != start_block] #It's possible that scraping failed in the middle of the last block, so we delete those rows
-	df.to_csv(outfile,index=False)
-
-	print( f"Restoring from {outfile}" )
-	print( f"Starting at {start_block}" )
-	return df.columns, start_block
-
 				
 
 if __name__ == '__main__':
@@ -208,6 +207,5 @@ if __name__ == '__main__':
 	target_events = ['Transfer']
 
 	outfile = "data/uni_token_logs.csv"
-	api_url = "http://127.0.0.1:8545"
 
-	getContractEvents( contract_address, target_events, outfile, api_url, deploy_block ,end_block=None )
+	getContractEvents( contract_address, target_events, outfile, deploy_block ,end_block=None )
