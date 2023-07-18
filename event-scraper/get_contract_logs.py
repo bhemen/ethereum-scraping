@@ -138,13 +138,14 @@ def getContractEvents( contract_address, target_events, outfile, api_url="127.0.
 
 			if len(lgs) > 0:
 				new_rows = processLogs(w3,contract,target_event_signatures,lgs)	#Returns a list of dictionaries
-				with open( outfile, 'a' ) as f:
-					w = csv.DictWriter( f, fieldnames=colnames )
-					w.writerows( new_rows )
-				
-				if 'timestamp' in new_rows[-1].keys():
-					formatted_time = datetime.fromtimestamp(new_rows[-1]['timestamp']).strftime("%Y-%m-%d")
-				events_count = len(new_rows)
+				if len(new_rows) > 0:
+					with open( outfile, 'a' ) as f:
+						w = csv.DictWriter( f, fieldnames=colnames )
+						w.writerows( new_rows )
+					
+					if 'timestamp' in new_rows[-1].keys():
+						formatted_time = datetime.fromtimestamp(new_rows[-1]['timestamp']).strftime("%Y-%m-%d")
+					events_count = len(new_rows)
 
 			bar.set_description(f"Current block: {batch_start_block} ({formatted_time}) blocks in a scan batch: {batch_size}, events processed in a batch {events_count}")
 			bar.update(batch_size)
