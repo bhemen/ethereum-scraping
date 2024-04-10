@@ -75,6 +75,21 @@ def set_abi(contract_address,abi,overwrite=True):
 		print( f"abi already exists" )
 		
 
+def check_cache( contract_address, abikw="" ):
+	try:
+		with open(_cache_file) as f:
+			_cache = json.load(f)
+	except Exception as e:
+		return None
+
+	if abikw:
+		search_for = abikw
+	else:
+		search_for = contract_address
+	
+	abi = _cache.get(search_for)
+
+	return abi
 
 def get_cached_abi(contract_address,abikw=""):
 	"""
