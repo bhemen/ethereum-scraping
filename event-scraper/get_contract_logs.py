@@ -24,7 +24,7 @@ def restoreState(outfile):
 	print( f"Starting at {start_block}" )
 	return df.columns, start_block
 
-def getContractEvents( contract_address, target_events, outfile, api_url="127.0.0.1:8545",start_block=1,end_block=None ):
+def getContractEvents( contract_address, target_events, outfile, api_url="http://127.0.0.1:8545",start_block=1,end_block=None ):
 	"""
 		contract_address - the address of the contract to scrape
 		target_events - list of names of events you want to scrape (if target_events = 'all' then, we scrape all events from the contract)
@@ -209,4 +209,4 @@ if __name__ == '__main__':
 
 	outfile = "data/uni_token_logs.csv"
 
-	getContractEvents( contract_address, target_events, outfile, deploy_block ,end_block=None )
+	getContractEvents( contract_address, target_events, outfile, start_block=deploy_block ,end_block=None )
